@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QGraphicsDropShadowEffect, QFrame, QSizePolicy
 )
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor, QFont, QWheelEvent
 
 import config
 
@@ -29,11 +29,14 @@ class OverlayWindow(QWidget):
         self.current_title = ""
         self.current_artist = ""
 
+        # Opacidad de fondo configurable (0.0 a 1.0)
+        self.bg_opacity = float(self.cfg.get("opacity", 0.80))
+
         # Control de sincronización suave
         self.base_pos = 0.0
         self.is_playing = False
         self.sync_timestamp = time.time()
-        self.sync_offset_ms = self.cfg.get("sync_offset_ms", 150)
+        self.sync_offset_ms = int(self.cfg.get("sync_offset_ms", 150))
 
         self._init_window_flags()
         self._init_ui()
@@ -47,7 +50,7 @@ class OverlayWindow(QWidget):
             self.cfg.get("window_height", 185)
         )
 
-        # Timer de alta frecuencia (30ms = ~33 FPS) para sincronización milimétrica continua
+        # Timer de alta frecuencia (~33 FPS) para sincronización continua
         self.render_timer = QTimer(self)
         self.render_timer.setInterval(30)
         self.render_timer.timeout.connect(self._on_render_tick)
@@ -70,7 +73,7 @@ class OverlayWindow(QWidget):
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(4)
 
-        # Contenedor con borde y fondo semitransparente
+        # Contenedor con borde y fondo configurable
         self.container = QFrame(self)
         self.container.setObjectName("container")
         container_layout = QVBoxLayout(self.container)
@@ -86,6 +89,14 @@ class OverlayWindow(QWidget):
         self.lbl_title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.header_layout.addWidget(self.lbl_title)
 
+        # Botón de Transparencia de Fondo (Click para ciclar, rueda del ratón para ajuste fino)
+        self.btn_opacity = QPushButton(f"🌓 {int(self.bg_opacity * 100)}%", self.container)
+        self.btn_opacity.setObjectName("btnSmall")
+        self.btn_opacity.setToolTip("Transparencia del fondo.\nHaz clic para cambiar (100% -> 80% -> 60% -> 40% -> 20% -> 0% Solo Texto).\nRueda del ratón para ajuste fino.")
+        self.btn_opacity.clicked.connect(self._cycle_opacity)
+        self.btn_opacity.wheelEvent = self._wheel_opacity
+        self.header_layout.addWidget(self.btn_opacity)
+
         # Ajuste fino de sincronización (+/- 100ms)
         self.btn_sync_minus = QPushButton("-0.1s", self.container)
         self.btn_sync_minus.setObjectName("btnSmall")
@@ -95,7 +106,7 @@ class OverlayWindow(QWidget):
 
         self.lbl_sync_info = QPushButton(f"Sync: {self.sync_offset_ms:+d}ms", self.container)
         self.lbl_sync_info.setObjectName("btnSmall")
-        self.lbl_sync_info.setToolTip("Compensación de sincronización. Haz clic para reiniciar a 0ms.")
+        self.lbl_sync_info.setToolTip("Compensación de sincronización. Clic para reiniciar a 0ms.")
         self.lbl_sync_info.clicked.connect(self._reset_sync_offset)
         self.header_layout.addWidget(self.lbl_sync_info)
 
@@ -108,7 +119,7 @@ class OverlayWindow(QWidget):
         # Indicador de modo juego / candado
         self.btn_lock = QPushButton("🔒 Modo Juego (F8)", self.container)
         self.btn_lock.setObjectName("btnLock")
-        self.btn_lock.setToolTip("Activa el modo fantasma: los clics pasan directo al LoL / juego.\nPulsa F8 o Ctrl+Alt+L para desbloquear.")
+        self.btn_lock.setToolTip("Activa el modo fantasma: los clics pasan directo al juego (LoL).\nPulsa F8 para desbloquear.")
         self.btn_lock.clicked.connect(lambda: self.toggle_click_through(True))
         self.header_layout.addWidget(self.btn_lock)
 
@@ -157,7 +168,7 @@ class OverlayWindow(QWidget):
         self._add_shadow(self.lbl_current_orig, radius=12, opacity=0.95)
         self.lyrics_layout.addWidget(self.lbl_current_orig)
 
-        # Línea actual traducida al español (justo abajo en cian suave)
+        # Línea actual traducida al español (justo abajo)
         self.lbl_current_trans = QLabel("La traducción al español aparecerá aquí", self.container)
         self.lbl_current_trans.setObjectName("currentTrans")
         self.lbl_current_trans.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -196,11 +207,18 @@ class OverlayWindow(QWidget):
         c_orig = self.cfg.get("font_color_original", "#FFFFFF")
         c_trans = self.cfg.get("font_color_translation", "#70D6FF")
 
+        # Calcular estilo de fondo según nivel de opacidad
+        alpha = int(self.bg_opacity * 255)
+        if alpha <= 5:
+            # Transparencia total: sin fondo ni borde, solo texto flotante con sombra
+            bg_style = "background-color: transparent; border: none;"
+        else:
+            border_alpha = min(0.25, max(0.04, self.bg_opacity * 0.2))
+            bg_style = f"background-color: rgba(14, 16, 22, {alpha}); border-radius: 12px; border: 1px solid rgba(255, 255, 255, {border_alpha});"
+
         stylesheet = f"""
             QFrame#container {{
-                background-color: rgba(14, 16, 22, {int(self.cfg.get("opacity", 0.85) * 255)});
-                border-radius: 12px;
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                {bg_style}
             }}
             QLabel#trackInfo {{
                 color: #CBD5E0;
@@ -215,7 +233,7 @@ class OverlayWindow(QWidget):
                 padding-top: 2px;
             }}
             QLabel#prevLyric, QLabel#nextLyric {{
-                color: rgba(210, 215, 225, 0.45);
+                color: rgba(210, 215, 225, 0.50);
                 font-size: {max(10, f_orig - 4)}px;
                 font-family: 'Segoe UI', sans-serif;
             }}
@@ -244,36 +262,61 @@ class OverlayWindow(QWidget):
                 font-family: 'Segoe UI', sans-serif;
             }}
             QPushButton:hover {{
-                background-color: rgba(255, 255, 255, 0.20);
+                background-color: rgba(255, 255, 255, 0.22);
                 color: #FFFFFF;
             }}
             QPushButton#btnLock {{
-                background-color: rgba(49, 130, 206, 0.3);
-                border: 1px solid rgba(99, 179, 237, 0.5);
+                background-color: rgba(49, 130, 206, 0.35);
+                border: 1px solid rgba(99, 179, 237, 0.55);
                 color: #BEE3F8;
                 font-weight: bold;
             }}
             QPushButton#btnLock:hover {{
-                background-color: rgba(49, 130, 206, 0.5);
+                background-color: rgba(49, 130, 206, 0.55);
             }}
             QPushButton#btnClose {{
-                background-color: rgba(229, 62, 62, 0.2);
-                border: 1px solid rgba(245, 101, 101, 0.4);
+                background-color: rgba(229, 62, 62, 0.25);
+                border: 1px solid rgba(245, 101, 101, 0.45);
                 color: #FEB2B2;
                 font-weight: bold;
             }}
             QPushButton#btnClose:hover {{
-                background-color: rgba(229, 62, 62, 0.5);
+                background-color: rgba(229, 62, 62, 0.55);
                 color: #FFFFFF;
             }}
         """
         self.setStyleSheet(stylesheet)
-        
+
         mode = self.cfg.get("display_mode", "3_lines")
         self.lbl_prev.setVisible(mode == "3_lines")
         self.lbl_next.setVisible(mode == "3_lines")
         self.btn_mode.setText("3L" if mode == "3_lines" else "1L")
         self.lbl_sync_info.setText(f"Sync: {self.sync_offset_ms:+d}ms")
+        self.btn_opacity.setText(f"🌓 {int(self.bg_opacity * 100)}%")
+
+    def _cycle_opacity(self):
+        """Cicla entre niveles de opacidad: 100% -> 80% -> 60% -> 40% -> 20% -> 0% -> 100%"""
+        steps = [1.0, 0.80, 0.60, 0.40, 0.20, 0.0]
+        curr = round(self.bg_opacity, 2)
+        next_val = steps[0]
+        for idx, val in enumerate(steps):
+            if abs(curr - val) < 0.05:
+                next_val = steps[(idx + 1) % len(steps)]
+                break
+        self.set_opacity(next_val)
+
+    def _wheel_opacity(self, event: QWheelEvent):
+        """Permite ajuste fino de opacidad con la rueda del ratón (pasos de 5%)."""
+        delta = 0.05 if event.angleDelta().y() > 0 else -0.05
+        new_val = max(0.0, min(1.0, self.bg_opacity + delta))
+        self.set_opacity(new_val)
+        event.accept()
+
+    def set_opacity(self, value: float):
+        self.bg_opacity = round(max(0.0, min(1.0, value)), 2)
+        self.cfg["opacity"] = self.bg_opacity
+        config.save_config(self.cfg)
+        self._apply_styling()
 
     def _adjust_sync_offset(self, delta_ms: int):
         self.sync_offset_ms += delta_ms
@@ -306,7 +349,6 @@ class OverlayWindow(QWidget):
         self.sync_timestamp = sync_timestamp
 
     def _on_render_tick(self):
-        """Tick continuo a alta frecuencia (~33 FPS) para sincronizar suavemente."""
         if not self.lyrics_data:
             return
 
@@ -316,7 +358,6 @@ class OverlayWindow(QWidget):
         else:
             current_sec = self.base_pos
 
-        # Aplicar compensación de sincronización
         effective_sec = current_sec + (self.sync_offset_ms / 1000.0)
         self.update_position(effective_sec)
 
@@ -333,16 +374,23 @@ class OverlayWindow(QWidget):
 
         interactive_controls = [
             self.btn_lock, self.btn_mode, self.btn_font_dec, self.btn_font_inc,
-            self.btn_close, self.btn_sync_minus, self.lbl_sync_info, self.btn_sync_plus
+            self.btn_close, self.btn_sync_minus, self.lbl_sync_info, self.btn_sync_plus,
+            self.btn_opacity
         ]
 
         if self.click_through:
-            # Modo fantasma: clics del mouse traspasan directo a League of Legends
+            # Modo fantasma: clics del mouse traspasan directo al juego
             user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex_style | WS_EX_TRANSPARENT | WS_EX_LAYERED)
             for c in interactive_controls:
                 c.setVisible(False)
             self.lbl_game_mode_indicator.setVisible(True)
-            self.container.setStyleSheet(f"QFrame#container {{ background-color: rgba(10, 12, 16, {int(self.cfg.get('opacity', 0.85) * 190)}); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 10px; }}")
+            
+            # En modo juego, aplicar transparencia configurada
+            alpha = int(self.bg_opacity * 220)
+            if alpha <= 5:
+                self.container.setStyleSheet("QFrame#container { background-color: transparent; border: none; }")
+            else:
+                self.container.setStyleSheet(f"QFrame#container {{ background-color: rgba(10, 12, 16, {alpha}); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 10px; }}")
         else:
             # Modo interactivo: se puede arrastrar y editar
             user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex_style & ~WS_EX_TRANSPARENT)
@@ -374,7 +422,7 @@ class OverlayWindow(QWidget):
         self.current_line_idx = -1
         if title:
             self.lbl_title.setText(f"🎵 {title}  —  {artist}")
-            self.lbl_current_orig.setText("Buscando letra y traducción...")
+            self.lbl_current_orig.setText("Cargando letra...")
             self.lbl_current_trans.setText("")
             self.lbl_prev.setText("")
             self.lbl_next.setText("")
@@ -385,20 +433,39 @@ class OverlayWindow(QWidget):
             self.lbl_prev.setText("")
             self.lbl_next.setText("")
 
-    def set_lyrics(self, lyrics_with_translations: List[Dict[str, any]]):
-        self.lyrics_data = lyrics_with_translations
+    def set_lyrics(self, lyrics_list: List[Dict[str, any]]):
+        """Establece las letras sincronizadas inmediatamente para reproducción instantánea."""
+        self.lyrics_data = lyrics_list
         self.current_line_idx = -1
         if not self.lyrics_data:
             self.lbl_current_orig.setText("No se encontró letra sincronizada para esta canción")
             self.lbl_current_trans.setText("")
             self.lbl_prev.setText("")
             self.lbl_next.setText("")
+        else:
+            # Renderizar primera línea inmediatamente
+            self._render_lyrics(0)
+
+    def update_translations(self, translations_list: List[str]):
+        """Actualiza suavemente las traducciones al español recibidas en segundo plano."""
+        if not self.lyrics_data or len(translations_list) != len(self.lyrics_data):
+            return
+
+        for i, trans in enumerate(translations_list):
+            self.lyrics_data[i]["translation"] = trans
+
+        # Si ya hay una línea activa, actualizar su traducción en pantalla
+        if 0 <= self.current_line_idx < len(self.lyrics_data):
+            curr = self.lyrics_data[self.current_line_idx]
+            trans_text = curr.get("translation", "")
+            orig_text = curr.get("text", "")
+            if trans_text and trans_text.lower() != orig_text.lower():
+                self.lbl_current_trans.setText(trans_text)
 
     def update_position(self, current_seconds: float):
         if not self.lyrics_data:
             return
 
-        # Encontrar el verso exacto para el segundo actual
         idx = -1
         for i, line in enumerate(self.lyrics_data):
             if current_seconds >= line["time"]:
@@ -421,6 +488,9 @@ class OverlayWindow(QWidget):
                 self.lbl_next.setText("")
             return
 
+        if idx >= len(self.lyrics_data):
+            return
+
         curr = self.lyrics_data[idx]
         orig_text = curr["text"]
         trans_text = curr.get("translation", "")
@@ -432,7 +502,7 @@ class OverlayWindow(QWidget):
             self.lbl_current_orig.setText(orig_text)
             self.lbl_current_trans.setText(trans_text if trans_text and trans_text.lower() != orig_text.lower() else "")
 
-        # Línea anterior
+        # Línea previa
         if idx > 0:
             self.lbl_prev.setText(self.lyrics_data[idx - 1]["text"])
         else:
