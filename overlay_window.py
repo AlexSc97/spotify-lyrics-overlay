@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QGraphicsDropShadowEffect, QFrame, QSizePolicy
 )
-from PyQt6.QtGui import QColor, QFont, QWheelEvent
+from PyQt6.QtGui import QColor, QFont, QWheelEvent, QGuiApplication
 
 import config
 
@@ -42,13 +42,13 @@ class OverlayWindow(QWidget):
         self._init_ui()
         self._apply_styling()
 
-        # Restaurar posición y tamaño
-        self.setGeometry(
-            self.cfg.get("window_x", 150),
-            self.cfg.get("window_y", 150),
-            self.cfg.get("window_width", 680),
-            self.cfg.get("window_height", 185)
-        )
+        # Restaurar posición y tamaño asegurando que esté dentro de la pantalla visible
+        init_x = self.cfg.get("window_x", 620)
+        init_y = self.cfg.get("window_y", 70)
+        init_w = self.cfg.get("window_width", 680)
+        init_h = self.cfg.get("window_height", 185)
+        clean_x, clean_y, clean_w, clean_h = self._sanitize_geometry(init_x, init_y, init_w, init_h)
+        self.setGeometry(clean_x, clean_y, clean_w, clean_h)
 
         # Timer de alta frecuencia (~33 FPS) para sincronización continua
         self.render_timer = QTimer(self)
@@ -399,6 +399,16 @@ class OverlayWindow(QWidget):
             self.lbl_game_mode_indicator.setVisible(False)
             self._apply_styling()
 
+    def _sanitize_geometry(self, x: int, y: int, w: int, h: int):
+        screen = QGuiApplication.primaryScreen()
+        if screen:
+            geom = screen.availableGeometry()
+            # Si las coordenadas quedan completamente fuera de la pantalla visible
+            if x < geom.left() - 50 or x > (geom.right() - 100) or y < geom.top() - 30 or y > (geom.bottom() - 60):
+                x = geom.left() + max(0, (geom.width() - w) // 2)
+                y = geom.top() + 70
+        return x, y, w, h
+
     # Arrastre de ventana con el ratón
     def mousePressEvent(self, event):
         if not self.click_through and event.button() == Qt.MouseButton.LeftButton:
@@ -412,8 +422,11 @@ class OverlayWindow(QWidget):
 
     def mouseReleaseEvent(self, event):
         if not self.click_through:
-            self.cfg["window_x"] = self.x()
-            self.cfg["window_y"] = self.y()
+            clean_x, clean_y, _, _ = self._sanitize_geometry(self.x(), self.y(), self.width(), self.height())
+            if clean_x != self.x() or clean_y != self.y():
+                self.move(clean_x, clean_y)
+            self.cfg["window_x"] = clean_x
+            self.cfg["window_y"] = clean_y
             config.save_config(self.cfg)
 
     def set_track_info(self, title: str, artist: str):
