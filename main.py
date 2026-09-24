@@ -1,4 +1,12 @@
 import sys
+import os
+
+# Si se ejecuta con pythonw (sin consola), redirigir stdout y stderr para evitar cierres silenciosos
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 from typing import List, Dict
 
 from PyQt6.QtWidgets import QApplication
@@ -51,18 +59,23 @@ class LyricsFetchWorker(QThread):
         if self._is_cancelled:
             return
 
-        # PASO 2: Traducir en segundo plano sin congelar la interfaz
-        translated_texts = self.translator.translate_lines(track_key, original_texts)
+        # PASO 2: Traducir en segundo plano con transmisión progresiva lote a lote
+        def on_batch(partial_translations: List[str]):
+            if not self._is_cancelled:
+                self.translations_ready.emit(self.title, self.artist, partial_translations)
 
-        if self._is_cancelled:
-            return
-
-        self.translations_ready.emit(self.title, self.artist, translated_texts)
+        self.translator.translate_lines(
+            track_key,
+            original_texts,
+            on_batch_done=on_batch,
+            is_cancelled=lambda: self._is_cancelled
+        )
 
 class AppController(QObject):
     def __init__(self):
         super().__init__()
         self.app = QApplication(sys.argv)
+        self.app.setQuitOnLastWindowClosed(False)
         self.overlay = OverlayWindow()
         self.translator = TranslatorService()
         self.current_worker: LyricsFetchWorker = None

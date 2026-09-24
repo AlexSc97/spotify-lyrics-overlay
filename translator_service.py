@@ -1,8 +1,8 @@
 import json
 import os
 import time
-from typing import List, Dict
-from deep_translator import MyMemoryTranslator, GoogleTranslator
+from typing import List, Dict, Callable, Optional
+import translators as ts
 
 CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "translations_cache.json")
 
@@ -26,79 +26,107 @@ class TranslatorService:
         except Exception:
             pass
 
-    def translate_lines(self, track_id: str, original_lines: List[str]) -> List[str]:
+    def translate_batch_with_fallback(self, text_list: List[str]) -> List[str]:
+        """Traduce una lista de líneas utilizando múltiples motores de respaldo."""
+        if not text_list:
+            return []
+
+        joined = "\n".join(text_list)
+        # Motores ordenados por fiabilidad y sin límites de cuota diarios
+        engines = ["bing", "sogou", "alibaba", "caiyun", "baidu"]
+
+        for engine in engines:
+            try:
+                res = ts.translate_text(
+                    joined,
+                    from_language="auto",
+                    to_language="es",
+                    translator=engine,
+                    timeout=5
+                )
+                if res:
+                    lines = [l.strip() for l in res.splitlines()]
+                    if len(lines) == len(text_list):
+                        return lines
+                    elif len(lines) > 0:
+                        # Si devolvió líneas pero hubo saltos de línea combinados, ajustar longitud
+                        adjusted = []
+                        for i in range(len(text_list)):
+                            if i < len(lines):
+                                adjusted.append(lines[i])
+                            else:
+                                adjusted.append("")
+                        return adjusted
+            except Exception:
+                continue
+
+        # Si todos los motores en lote fallaron, intentar traducción línea por línea
+        fallback_res = []
+        for single in text_list:
+            try:
+                t = ts.translate_text(single, from_language="auto", to_language="es", translator="bing", timeout=3)
+                fallback_res.append(t.strip() if t else "")
+            except Exception:
+                fallback_res.append("")
+        return fallback_res
+
+    def translate_lines(
+        self,
+        track_id: str,
+        original_lines: List[str],
+        on_batch_done: Optional[Callable[[List[str]], None]] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None
+    ) -> List[str]:
         """
-        Traduce líneas al español en segundo plano de manera segura y sin bloqueos.
+        Traduce líneas al español con actualización progresiva en tiempo real.
         """
         track_key = track_id.lower().strip()
         if track_key in self.cache and len(self.cache[track_key]) == len(original_lines):
-            return self.cache[track_key]
+            cached = self.cache[track_key]
+            if on_batch_done:
+                on_batch_done(cached)
+            return cached
 
         if not original_lines:
             return []
 
         translations = ["" for _ in original_lines]
 
-        # Agrupar en pequeños bloques de 6 a 8 líneas para no saturar APIs
-        batch_size = 7
+        # Agrupar en lotes pequeños (7-8 líneas) para máxima velocidad de respuesta
+        batch_size = 8
         batches = []
-        current_indices = []
-        current_texts = []
+        curr_indices = []
+        curr_texts = []
 
         for idx, line in enumerate(original_lines):
-            text = line.strip()
-            if not text or text in ["♪", "♫", "Instrumental", "[Instrumental]"]:
-                translations[idx] = text
+            t = line.strip()
+            if not t or t in ["♪", "♫", "Instrumental", "[Instrumental]"]:
+                translations[idx] = t
                 continue
+            curr_indices.append(idx)
+            curr_texts.append(t)
+            if len(curr_texts) >= batch_size:
+                batches.append((curr_indices, curr_texts))
+                curr_indices = []
+                curr_texts = []
 
-            current_indices.append(idx)
-            current_texts.append(text)
+        if curr_texts:
+            batches.append((curr_indices, curr_texts))
 
-            if len(current_texts) >= batch_size:
-                batches.append((current_indices, current_texts))
-                current_indices = []
-                current_texts = []
-
-        if current_texts:
-            batches.append((current_indices, current_texts))
-
-        # Intentar con MyMemory primero (más tolerante con bloques multilínea)
         for batch_indices, batch_texts in batches:
-            joined = "\n".join(batch_texts)
-            translated_lines = None
+            if is_cancelled and is_cancelled():
+                return translations
 
-            # Intento 1: MyMemory
-            try:
-                res = MyMemoryTranslator(source="auto", target="es-ES").translate(joined)
-                lines = res.splitlines() if res else []
-                if len(lines) == len(batch_texts):
-                    translated_lines = [l.strip() for l in lines]
-            except Exception:
-                pass
+            translated_batch = self.translate_batch_with_fallback(batch_texts)
+            for b_idx, tr_text in zip(batch_indices, translated_batch):
+                translations[b_idx] = tr_text
 
-            # Intento 2: GoogleTranslator si MyMemory no cuadró el conteo
-            if not translated_lines:
-                try:
-                    res = GoogleTranslator(source="auto", target="es").translate(joined)
-                    lines = res.splitlines() if res else []
-                    if len(lines) == len(batch_texts):
-                        translated_lines = [l.strip() for l in lines]
-                except Exception:
-                    pass
+            # Enviar actualización inmediata a la interfaz para que el usuario no espere al final
+            if on_batch_done:
+                on_batch_done(list(translations))
 
-            # Asignar resultados
-            if translated_lines:
-                for b_idx, trans in zip(batch_indices, translated_lines):
-                    translations[b_idx] = trans
-            else:
-                # Si falló la traducción del bloque, dejar el texto original sin bloquear
-                for b_idx, orig in zip(batch_indices, batch_texts):
-                    translations[b_idx] = ""
+            time.sleep(0.04)
 
-            # Breve pausa de cortesía para no saturar límites de red
-            time.sleep(0.08)
-
-        # Guardar en caché solo si se obtuvo al menos alguna traducción
         if any(translations):
             self.cache[track_key] = translations
             self._save_cache()

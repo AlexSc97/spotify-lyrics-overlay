@@ -63,7 +63,7 @@ class OverlayWindow(QWidget):
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.SubWindow
+            Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
@@ -144,7 +144,7 @@ class OverlayWindow(QWidget):
         # Botón cerrar
         self.btn_close = QPushButton("✕", self.container)
         self.btn_close.setObjectName("btnClose")
-        self.btn_close.clicked.connect(self.close)
+        self.btn_close.clicked.connect(self._close_app)
         self.header_layout.addWidget(self.btn_close)
 
         container_layout.addLayout(self.header_layout)
@@ -293,6 +293,14 @@ class OverlayWindow(QWidget):
         self.btn_mode.setText("3L" if mode == "3_lines" else "1L")
         self.lbl_sync_info.setText(f"Sync: {self.sync_offset_ms:+d}ms")
         self.btn_opacity.setText(f"🌓 {int(self.bg_opacity * 100)}%")
+
+    def _close_app(self):
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app:
+            app.quit()
+        else:
+            self.close()
 
     def _cycle_opacity(self):
         """Cicla entre niveles de opacidad: 100% -> 80% -> 60% -> 40% -> 20% -> 0% -> 100%"""

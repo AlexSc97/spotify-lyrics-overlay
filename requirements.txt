@@ -2,3 +2,4 @@ PyQt6>=6.6.0
 requests>=2.31.0
 deep-translator>=1.11.4
 winsdk>=1.0.0b10
+translators>=6.0.0
