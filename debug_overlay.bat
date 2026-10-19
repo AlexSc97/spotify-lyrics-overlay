@@ -7,7 +7,9 @@ echo ===================================================
 echo.
 
 set "PY_EXE="
-if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
+if exist "%LocalAppData%\Programs\Python\Python313\python.exe" (
+    set "PY_EXE=%LocalAppData%\Programs\Python\Python313\python.exe"
+) else if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
     set "PY_EXE=%LocalAppData%\Programs\Python\Python312\python.exe"
 ) else (
     set "PY_EXE=python"

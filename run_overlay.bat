@@ -4,7 +4,9 @@ cd /d "%~dp0"
 
 echo [1/2] Localizando Python...
 set "PY_EXE="
-if exist "%LocalAppData%\Programs\Python\Python312\pythonw.exe" (
+if exist "%LocalAppData%\Programs\Python\Python313\pythonw.exe" (
+    set "PY_EXE=%LocalAppData%\Programs\Python\Python313\pythonw.exe"
+) else if exist "%LocalAppData%\Programs\Python\Python312\pythonw.exe" (
     set "PY_EXE=%LocalAppData%\Programs\Python\Python312\pythonw.exe"
 ) else (
     where pythonw >nul 2>nul
@@ -21,7 +23,7 @@ if exist "%LocalAppData%\Programs\Python\Python312\pythonw.exe" (
 if "%PY_EXE%"=="" (
     echo.
     echo [ERROR] No se encontro Python en el sistema.
-    echo Asegurate de que Python 3.12 este instalado.
+    echo Asegurate de que Python este instalado y en el PATH.
     echo.
     pause
     exit /b 1

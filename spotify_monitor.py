@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
-import winsdk.windows.media.control as wmc
+try:
+    import winrt.windows.media.control as wmc
+except ImportError:
+    import winsdk.windows.media.control as wmc
 
 class SpotifyMonitor(QThread):
     # Señales Qt

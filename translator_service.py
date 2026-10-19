@@ -1,10 +1,16 @@
 import json
 import os
+import sys
 import time
 from typing import List, Dict, Callable, Optional
 import translators as ts
 
-CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "translations_cache.json")
+def _get_base_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+CACHE_FILE = os.path.join(_get_base_dir(), "translations_cache.json")
 
 class TranslatorService:
     def __init__(self):

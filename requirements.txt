@@ -1,5 +1,7 @@
 PyQt6>=6.6.0
 requests>=2.31.0
 deep-translator>=1.11.4
-winsdk>=1.0.0b10
+winsdk>=1.0.0b10; python_version < "3.13"
+winrt-Windows.Media.Control>=3.2.1; python_version >= "3.13"
+winrt-Windows.Foundation>=3.2.1; python_version >= "3.13"
 translators>=6.0.0

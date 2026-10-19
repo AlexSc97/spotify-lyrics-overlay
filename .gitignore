@@ -28,6 +28,8 @@ ENV/
 # Logs & temp files
 *.log
 *.tmp
+*.exe
+
 
 # User local data
 config.json
