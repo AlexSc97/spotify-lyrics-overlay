@@ -1,15 +1,31 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_all
 
-hiddenimports = ['winrt', 'winrt._winrt', 'winrt.windows.media.control', 'winrt.windows.foundation', 'winrt.windows.foundation.collections']
+datas = []
+binaries = []
+hiddenimports = [
+    'winrt',
+    'winrt._winrt',
+    'winrt.windows.media.control',
+    'winrt.windows.foundation',
+    'winrt.windows.foundation.collections',
+]
 hiddenimports += collect_submodules('winrt')
 
+for pkg in ['translators', 'niquests', 'urllib3_future', 'ai_cloudscraper', 'wassima']:
+    try:
+        d, b, h = collect_all(pkg)
+        datas += d
+        binaries += b
+        hiddenimports += h
+    except Exception:
+        pass
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
+    binaries=binaries,
+    datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

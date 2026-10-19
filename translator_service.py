@@ -3,7 +3,10 @@ import os
 import sys
 import time
 from typing import List, Dict, Callable, Optional
-import translators as ts
+try:
+    import translators as ts
+except Exception:
+    ts = None
 
 def _get_base_dir():
     if getattr(sys, 'frozen', False):
