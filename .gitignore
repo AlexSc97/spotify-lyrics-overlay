@@ -34,6 +34,7 @@ ENV/
 # User local data
 config.json
 translations_cache.json
+lyrics_cache.json
 
 # IDEs
 .vscode/

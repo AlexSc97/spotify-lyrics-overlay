@@ -457,15 +457,15 @@ class OverlayWindow(QWidget):
     def set_lyrics(self, lyrics_list: List[Dict[str, any]]):
         """Establece las letras sincronizadas inmediatamente para reproducción instantánea."""
         self.lyrics_data = lyrics_list
-        self.current_line_idx = -1
+        self.current_line_idx = -2
         if not self.lyrics_data:
             self.lbl_current_orig.setText("No se encontró letra sincronizada para esta canción")
             self.lbl_current_trans.setText("")
             self.lbl_prev.setText("")
             self.lbl_next.setText("")
         else:
-            # Renderizar primera línea inmediatamente
-            self._render_lyrics(0)
+            # Sincronizar y renderizar de inmediato en la posición actual de Spotify
+            self._on_render_tick()
 
     def update_translations(self, translations_list: List[str]):
         """Actualiza suavemente las traducciones al español recibidas en segundo plano."""
